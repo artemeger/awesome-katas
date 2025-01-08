@@ -9,3 +9,4 @@
 .idea
 *.iml
 *.lock
+katas/.gradle
