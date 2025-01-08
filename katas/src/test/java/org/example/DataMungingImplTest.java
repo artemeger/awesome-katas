@@ -33,4 +33,25 @@ class DataMungingImplTest {
       throw new RuntimeException(e);
     }
   }
+
+  @Test
+  void testGetTeamWithMinGoalSpread() {
+    var goalSpreads = List.of(
+      new DataMungingImpl.FootballTeamEntry("A", 20, 10),
+      new DataMungingImpl.FootballTeamEntry("B", 20, 19),
+      new DataMungingImpl.FootballTeamEntry("C", 11, 1)
+    );
+
+    assertThat(underTest.getTeamWithMinGoalSpread(goalSpreads), equalTo("B"));
+  }
+
+  @Test
+  void testDetermineTeamWithMinGoalSpread() {
+    try {
+      var result = underTest.determineTeamWithMinGoalSpread(Paths.get("src/test/resources/football.dat"));
+      assertThat(result, equalTo("Aston_Villa"));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
 }

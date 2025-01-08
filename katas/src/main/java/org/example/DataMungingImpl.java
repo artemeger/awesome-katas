@@ -41,12 +41,50 @@ public class DataMungingImpl {
       .collect(Collectors.toList());
   }
 
+  public String determineTeamWithMinGoalSpread(Path path) throws IOException {
+    var entries = createFootballGoalEntriesFromInputFile(path);
+    return getTeamWithMinGoalSpread(entries);
+  }
+
+  String getTeamWithMinGoalSpread(
+    final List<FootballTeamEntry> tempSpreads
+  ) {
+    return tempSpreads.stream()
+      .min(Comparator.comparing(FootballTeamEntry::calculateSpread))
+      .map(it -> it.name)
+      .orElse("No Team");
+  }
+
+  private List<FootballTeamEntry> createFootballGoalEntriesFromInputFile(
+    final Path path
+  ) throws IOException {
+    var input = Files.readAllLines(path, StandardCharsets.UTF_8)
+      .stream()
+      .skip(1);
+    return input
+      .map(DataMungingImpl::cleanFootballInputRow)
+      .takeWhile(DataMungingImpl::firstCharOfFirstElementIsInteger)
+      .map(it -> new FootballTeamEntry(
+        it[1],
+        Integer.valueOf(it[6]),
+        Integer.valueOf(it[8]))
+      )
+      .collect(Collectors.toList());
+  }
+
   private static String[] cleanInputRow(String it) {
     return it.trim().replace("*", "").split("\\s+");
   }
 
+  private static String[] cleanFootballInputRow(String it) {
+    return it.trim().split("\\s+");
+  }
+
   private static boolean firstElementIsInteger(String[] it) {
     return it[0].matches("\\d+");
+  }
+  private static boolean firstCharOfFirstElementIsInteger(String[] it) {
+    return it[0].substring(0, 1).matches("\\d");
   }
 
   public record DayTemperatureEntry(
@@ -57,6 +95,17 @@ public class DataMungingImpl {
 
     public Double calculateSpread() {
       return maxTemperature - minTemperature;
+    }
+  }
+
+  public record FootballTeamEntry(
+    String name,
+    Integer goalsFor,
+    Integer goalsAgainst
+  ) {
+
+    public Integer calculateSpread() {
+      return Math.abs(goalsFor - goalsAgainst);
     }
   }
 }
