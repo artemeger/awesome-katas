@@ -6,95 +6,152 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 
 public class DataMungingImpl {
 
-  public Integer determineDayWithMaxTemperatureSpread(Path path) throws IOException {
-    var entries = createDayTemperatureEntriesFromInputFile(path);
+  public String determineDayWithMaxTemperatureSpread(Path path) throws IOException {
+    var dataFile = new WeatherFile(path);
+    var entries = readFile(dataFile);
     return getDayWithMaxTemperatureSpread(entries);
   }
 
-  Integer getDayWithMaxTemperatureSpread(
-    final List<DayTemperatureEntry> tempSpreads
+  String getDayWithMaxTemperatureSpread(
+    final List<HasSpread> tempSpreads
   ) {
     return tempSpreads.stream()
-      .max(Comparator.comparing(DayTemperatureEntry::calculateSpread))
-      .map(it -> it.day)
-      .orElse(0);
-  }
-
-  private List<DayTemperatureEntry> createDayTemperatureEntriesFromInputFile(
-    final Path path
-  ) throws IOException {
-    var input = Files.readAllLines(path, StandardCharsets.UTF_8)
-      .stream()
-      .skip(2);
-    return input
-      .map(DataMungingImpl::cleanInputRow)
-      .takeWhile(DataMungingImpl::firstElementIsInteger)
-      .map(it -> new DayTemperatureEntry(
-        Integer.valueOf(it[0]),
-        Double.valueOf(it[1]),
-        Double.valueOf(it[2]))
-      )
-      .collect(Collectors.toList());
+      .max(Comparator.comparing(HasSpread::calculateSpread))
+      .map(HasSpread::getId)
+      .orElse("0");
   }
 
   public String determineTeamWithMinGoalSpread(Path path) throws IOException {
-    var entries = createFootballGoalEntriesFromInputFile(path);
+    var dataFile = new FootballFile(path);
+    var entries = readFile(dataFile);
     return getTeamWithMinGoalSpread(entries);
   }
 
   String getTeamWithMinGoalSpread(
-    final List<FootballTeamEntry> tempSpreads
+    final List<HasSpread> tempSpreads
   ) {
     return tempSpreads.stream()
-      .min(Comparator.comparing(FootballTeamEntry::calculateSpread))
-      .map(it -> it.name)
+      .min(Comparator.comparing(HasSpread::calculateSpread))
+      .map(HasSpread::getId)
       .orElse("No Team");
   }
 
-  private List<FootballTeamEntry> createFootballGoalEntriesFromInputFile(
-    final Path path
+  private static List<HasSpread> readFile(
+    final DataFile dataFile
   ) throws IOException {
-    var input = Files.readAllLines(path, StandardCharsets.UTF_8)
+    return Files.readAllLines(dataFile.getPath(), StandardCharsets.UTF_8)
       .stream()
-      .skip(1);
-    return input
-      .map(DataMungingImpl::cleanFootballInputRow)
-      .takeWhile(DataMungingImpl::firstCharOfFirstElementIsInteger)
-      .map(it -> new FootballTeamEntry(
-        it[1],
-        Integer.valueOf(it[6]),
-        Integer.valueOf(it[8]))
-      )
-      .collect(Collectors.toList());
+      .skip(dataFile.getLinesToSkip())
+      .map(dataFile::cleanInputRow)
+      .takeWhile(it -> dataFile.untilCondition().apply(it))
+      .map(dataFile::toHasSpread)
+      .toList()
+      ;
   }
 
-  private static String[] cleanInputRow(String it) {
-    return it.trim().replace("*", "").split("\\s+");
+  public interface DataFile {
+    Path getPath();
+
+    long getLinesToSkip();
+
+    HasSpread toHasSpread(String[] raw);
+
+    String[] cleanInputRow(String input);
+
+    Function<String[], Boolean> untilCondition();
   }
 
-  private static String[] cleanFootballInputRow(String it) {
-    return it.trim().split("\\s+");
+  public record WeatherFile(
+    Path path
+  ) implements DataFile {
+
+    @Override
+    public Path getPath() {
+      return path;
+    }
+
+    @Override
+    public long getLinesToSkip() {
+      return 2;
+    }
+
+    @Override
+    public HasSpread toHasSpread(String[] raw) {
+      return new DayTemperatureEntry(
+        Integer.valueOf(raw[0]),
+        Integer.valueOf(raw[1]),
+        Integer.valueOf(raw[2])
+      );
+    }
+
+    @Override
+    public String[] cleanInputRow(String input) {
+      return input.trim().replace("*", "").split("\\s+");
+    }
+
+    @Override
+    public Function<String[], Boolean> untilCondition() {
+      return it -> it[0].matches("\\d+");
+    }
   }
 
-  private static boolean firstElementIsInteger(String[] it) {
-    return it[0].matches("\\d+");
+  public record FootballFile(
+    Path path
+  ) implements DataFile {
+
+    @Override
+    public Path getPath() {
+      return path;
+    }
+
+    @Override
+    public long getLinesToSkip() {
+      return 1;
+    }
+
+    @Override
+    public HasSpread toHasSpread(String[] raw) {
+      return new FootballTeamEntry(
+        raw[1],
+        Integer.valueOf(raw[6]),
+        Integer.valueOf(raw[8])
+      );
+    }
+
+    @Override
+    public String[] cleanInputRow(String input) {
+      return input.trim().split("\\s+");
+    }
+
+    @Override
+    public Function<String[], Boolean> untilCondition() {
+      return it -> it[0].substring(0, 1).matches("\\d");
+    }
   }
-  private static boolean firstCharOfFirstElementIsInteger(String[] it) {
-    return it[0].substring(0, 1).matches("\\d");
+
+  public interface HasSpread {
+    Integer calculateSpread();
+
+    String getId();
   }
 
   public record DayTemperatureEntry(
     Integer day,
-    Double maxTemperature,
-    Double minTemperature
-  ) {
+    Integer maxTemperature,
+    Integer minTemperature
+  ) implements HasSpread {
 
-    public Double calculateSpread() {
+    public Integer calculateSpread() {
       return maxTemperature - minTemperature;
+    }
+
+    @Override
+    public String getId() {
+      return day.toString();
     }
   }
 
@@ -102,10 +159,16 @@ public class DataMungingImpl {
     String name,
     Integer goalsFor,
     Integer goalsAgainst
-  ) {
+  ) implements HasSpread {
 
+    @Override
     public Integer calculateSpread() {
       return Math.abs(goalsFor - goalsAgainst);
+    }
+
+    @Override
+    public String getId() {
+      return name;
     }
   }
 }
